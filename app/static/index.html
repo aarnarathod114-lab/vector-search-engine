@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Search Wikipedia by meaning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page: #eef1f6;
+    --surface: #ffffff;
+    --ink: #17203a;
+    --muted: #5c6785;
+    --line: #d5dbe8;
+    --index: #2f5bea;
+    --model: #c98a06;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #101626;
+      --surface: #19213a;
+      --ink: #e8ecf7;
+      --muted: #9aa6c4;
+      --line: #2c3757;
+      --index: #7c9bff;
+      --model: #f0b93a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 400 1.0625rem/1.55 "Instrument Sans", system-ui, sans-serif;
+  }
+  main { max-width: 44rem; margin: 0 auto; padding: 4.5rem 1.25rem 4rem; }
+  h1 {
+    margin: 0 0 0.75rem;
+    font: 700 clamp(2.25rem, 7vw, 3.5rem)/1.02 "Bricolage Grotesque", system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+  h2 {
+    margin: 0 0 0.75rem;
+    font: 600 1.25rem/1.2 "Bricolage Grotesque", system-ui, sans-serif;
+  }
+  .intro { margin: 0 0 2rem; max-width: 34rem; color: var(--muted); }
+
+  form { display: flex; gap: 0.5rem; }
+  input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    padding: 0.9rem 1rem;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+  }
+  button { font: inherit; cursor: pointer; }
+  .go {
+    padding: 0 1.4rem;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    background: var(--ink);
+    color: var(--page);
+    font-weight: 600;
+  }
+  :focus-visible { outline: 3px solid var(--index); outline-offset: 2px; }
+
+  .examples { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+  .examples button {
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 0.9375rem;
+  }
+  .examples button:hover { border-color: var(--ink); }
+
+  #status { min-height: 1.6rem; margin: 2.5rem 0 1rem; color: var(--muted); }
+  #status.problem { color: var(--ink); font-weight: 500; }
+
+  #results { margin: 0; padding: 0; list-style: none; counter-reset: rank; }
+  #results li {
+    counter-increment: rank;
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    padding: 1.1rem 0;
+    border-top: 1px solid var(--line);
+  }
+  #results li::before {
+    content: counter(rank);
+    color: var(--muted);
+    font: 600 1.25rem/1.3 "Bricolage Grotesque", system-ui, sans-serif;
+  }
+  #results a { color: var(--ink); font-weight: 600; font-size: 1.1875rem; text-underline-offset: 3px; }
+  #results a:hover { color: var(--index); }
+  #results p { margin: 0.3rem 0 0.6rem; color: var(--muted); }
+  .match { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9375rem; }
+  .match-track { flex: 0 0 9rem; height: 6px; border-radius: 3px; background: var(--line); }
+  .match-fill { display: block; height: 100%; border-radius: 3px; background: var(--index); }
+
+  #timing { margin-top: 2.5rem; padding-top: 1.75rem; border-top: 2px solid var(--ink); }
+  .split { display: flex; height: 2.25rem; border-radius: 6px; overflow: hidden; background: var(--line); }
+  .split span { display: block; min-width: 4px; transition: width 0.5s ease; }
+  .split .model { background: var(--model); }
+  .split .index { background: var(--index); }
+  @media (prefers-reduced-motion: reduce) { .split span { transition: none; } }
+  .legend { margin: 0.9rem 0 0; padding: 0; list-style: none; }
+  .legend li { display: grid; grid-template-columns: 1.1rem 1fr auto; gap: 0.6rem; align-items: baseline; padding: 0.2rem 0; }
+  .swatch { width: 0.8rem; height: 0.8rem; border-radius: 2px; align-self: center; }
+  .legend strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .takeaway { margin: 0.9rem 0 0; color: var(--muted); }
+
+  footer { margin-top: 3.5rem; color: var(--muted); font-size: 0.9375rem; }
+  footer p { margin: 0 0 0.4rem; }
+  footer a { color: var(--ink); text-underline-offset: 3px; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  [hidden] { display: none !important; }
+  @media (max-width: 30rem) {
+    main { padding-top: 2.5rem; }
+    form { flex-direction: column; }
+    .go { padding: 0.8rem; }
+    .match-track { flex-basis: 6rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Search Wikipedia by meaning</h1>
+  <p class="intro">Ask in your own words. The closest matches come from <span id="count">thousands of</span> Simple English Wikipedia articles, found by a search index written from scratch.</p>
+
+  <form id="form" role="search">
+    <label class="visually-hidden" for="q">Your question</label>
+    <input id="q" type="search" name="q" maxlength="200" autocomplete="off" placeholder="how do plants make food" required>
+    <button class="go" type="submit">Search</button>
+  </form>
+  <ul class="examples" aria-label="Example searches">
+    <li><button type="button">why is the sky blue</button></li>
+    <li><button type="button">animals that live in the ocean</button></li>
+    <li><button type="button">how do plants make food</button></li>
+    <li><button type="button">who invented the telephone</button></li>
+  </ul>
+
+  <p id="status" role="status" aria-live="polite"></p>
+  <ol id="results"></ol>
+
+  <section id="timing" hidden>
+    <h2>Where the time went</h2>
+    <div class="split" aria-hidden="true"><span class="model" id="bar-model"></span><span class="index" id="bar-index"></span></div>
+    <ul class="legend">
+      <li><span class="swatch" style="background: var(--model)"></span><span>Turning your question into numbers, done by a language model</span><strong id="ms-model"></strong></li>
+      <li><span class="swatch" style="background: var(--index)"></span><span id="label-index">Finding the nearest articles, done by the index</span><strong id="ms-index"></strong></li>
+    </ul>
+    <p class="takeaway" id="takeaway"></p>
+  </section>
+
+  <footer>
+    <p id="settings"></p>
+    <p><a href="/docs">API documentation</a></p>
+  </footer>
+</main>
+
+<script>
+  const form = document.getElementById("form");
+  const input = document.getElementById("q");
+  const statusLine = document.getElementById("status");
+  const list = document.getElementById("results");
+  const timing = document.getElementById("timing");
+  const number = (n) => n.toLocaleString("en-US");
+
+  function setStatus(text, isProblem) {
+    statusLine.textContent = text;
+    statusLine.classList.toggle("problem", Boolean(isProblem));
+  }
+
+  function showResults(data) {
+    list.replaceChildren();
+    for (const item of data.results) {
+      const row = document.createElement("li");
+      const body = document.createElement("div");
+
+      const link = document.createElement("a");
+      link.textContent = item.title;
+      if (item.url.startsWith("https://")) link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+
+      const text = document.createElement("p");
+      text.textContent = item.text;
+
+      const match = document.createElement("div");
+      match.className = "match";
+      const track = document.createElement("span");
+      track.className = "match-track";
+      const fill = document.createElement("span");
+      fill.className = "match-fill";
+      fill.style.width = Math.max(0, Math.min(1, item.score)) * 100 + "%";
+      track.append(fill);
+      const score = document.createElement("span");
+      score.textContent = item.score.toFixed(2) + " similarity";
+      match.append(track, score);
+
+      body.append(link, text, match);
+      row.append(body);
+      list.append(row);
+    }
+
+    const total = data.embed_ms + data.search_ms;
+    document.getElementById("bar-model").style.width = (data.embed_ms / total) * 100 + "%";
+    document.getElementById("bar-index").style.width = (data.search_ms / total) * 100 + "%";
+    document.getElementById("ms-model").textContent = data.embed_ms.toFixed(1) + " ms";
+    document.getElementById("ms-index").textContent = data.search_ms.toFixed(2) + " ms";
+    document.getElementById("label-index").textContent =
+      "Finding the nearest of " + number(data.total_articles) + " articles, done by the index";
+    document.getElementById("takeaway").textContent =
+      "The index took " + ((data.search_ms / total) * 100).toFixed(0) + "% of the time. " +
+      "It does not compare your question with every article: it walks a graph of neighbours and checks only a small fraction of them.";
+    timing.hidden = false;
+    setStatus(data.results.length + " closest articles for \u201c" + data.query + "\u201d");
+  }
+
+  async function search(query) {
+    setStatus("Searching\u2026");
+    try {
+      const response = await fetch("/search?k=5&q=" + encodeURIComponent(query));
+      if (!response.ok) throw new Error("status " + response.status);
+      showResults(await response.json());
+    } catch (error) {
+      list.replaceChildren();
+      timing.hidden = true;
+      setStatus("The search service did not answer. Check that the server is running, then search again.", true);
+    }
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const query = input.value.trim();
+    if (query) search(query);
+  });
+
+  for (const button of document.querySelectorAll(".examples button")) {
+    button.addEventListener("click", () => {
+      input.value = button.textContent;
+      search(button.textContent);
+    });
+  }
+
+  fetch("/stats")
+    .then((response) => (response.ok ? response.json() : Promise.reject()))
+    .then((stats) => {
+      document.getElementById("count").textContent = number(stats.articles);
+      document.getElementById("settings").textContent =
+        "Index: HNSW with M = " + stats.M + " and ef_construction = " + stats.ef_construction +
+        ", over " + stats.dimension + "-dimensional vectors compared by " + stats.metric +
+        " distance. Language model: " + stats.embedding_model + ".";
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>
