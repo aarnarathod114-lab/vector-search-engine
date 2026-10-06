@@ -160,14 +160,15 @@ def test_hnsw_recall_does_not_drop_with_more_search_effort(built_hnsw):
 
 def test_hnsw_links_respect_limits(built_hnsw):
     _, hnsw = built_hnsw
-    for node, layers in enumerate(hnsw._links):
-        for layer, links in enumerate(layers):
+    for node in range(len(hnsw)):
+        for layer in range(hnsw.level(node) + 1):
+            links = hnsw.neighbours(node, layer)
             limit = hnsw.M0 if layer == 0 else hnsw.M
             assert len(links) <= limit
             assert node not in links  # no link to itself
             assert len(links) == len(set(links))  # no repeated link
             # every neighbour must exist on this layer too
-            assert all(len(hnsw._links[nb]) > layer for nb in links)
+            assert all(hnsw.level(nb) >= layer for nb in links)
 
 
 def test_hnsw_every_node_is_reachable_on_layer_0(built_hnsw):
@@ -176,7 +177,7 @@ def test_hnsw_every_node_is_reachable_on_layer_0(built_hnsw):
     frontier = [hnsw._entry_point]
     while frontier:
         node = frontier.pop()
-        for nb in hnsw._links[node][0]:
+        for nb in hnsw.neighbours(node, 0):
             if nb not in seen:
                 seen.add(nb)
                 frontier.append(nb)
@@ -188,4 +189,7 @@ def test_hnsw_same_seed_builds_same_graph():
     first, second = HNSWIndex(dim=DIM, seed=7), HNSWIndex(dim=DIM, seed=7)
     first.add(data)
     second.add(data)
-    assert first._links == second._links
+    for node in range(len(first)):
+        assert first.level(node) == second.level(node)
+        for layer in range(first.level(node) + 1):
+            assert first.neighbours(node, layer) == second.neighbours(node, layer)
