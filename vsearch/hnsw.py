@@ -384,3 +384,82 @@ class HNSWIndex:
         )
         self._tag += self._max_layer + 2
         return ids, dists
+
+
+    # ------------------------------------------------------------------
+    # Saving and loading
+    # ------------------------------------------------------------------
+
+    _FORMAT_VERSION = 1
+
+    @staticmethod
+    def _npz_path(path) -> str:
+        """NumPy adds ".npz" when saving, so make save and load agree on it."""
+        path = str(path)
+        return path if path.endswith(".npz") else path + ".npz"
+
+    @staticmethod
+    def _padded(saved: np.ndarray, rows: int) -> np.ndarray:
+        """`saved` with zero rows added so that it has at least `rows` rows."""
+        extra = max(rows - saved.shape[0], 0)
+        blank = np.zeros((extra,) + saved.shape[1:], dtype=saved.dtype)
+        return np.concatenate([saved, blank])
+
+    def save(self, path) -> None:
+        """Write the whole index (vectors, graph and settings) to one .npz file."""
+        n, rows = self._count, self._upper_rows
+        np.savez(
+            self._npz_path(path),
+            format_version=self._FORMAT_VERSION,
+            dim=self.dim,
+            metric=self.metric,
+            M=self.M,
+            ef_construction=self.ef_construction,
+            ef_search=self.ef_search,
+            count=n,
+            upper_rows=rows,
+            entry_point=self._entry_point,
+            max_layer=self._max_layer,
+            # The random generator's state, so that vectors added after
+            # loading get the same layers as if the index was never saved.
+            rng_state=np.array(self._rng.getstate()[1], dtype=np.uint32),
+            vectors=self._vectors[:n],
+            links0=self._links0[:n],
+            degree0=self._degree0[:n],
+            levels=self._levels[:n],
+            upper_offset=self._upper_offset[:n],
+            upper_links=self._upper_links[:rows],
+            upper_degree=self._upper_degree[:rows],
+        )
+
+    @classmethod
+    def load(cls, path) -> "HNSWIndex":
+        """Read an index written by save()."""
+        with np.load(cls._npz_path(path), allow_pickle=False) as saved:
+            version = int(saved["format_version"])
+            if version != cls._FORMAT_VERSION:
+                raise ValueError(f"unsupported index file version {version}")
+            index = cls(
+                dim=int(saved["dim"]),
+                metric=str(saved["metric"]),
+                M=int(saved["M"]),
+                ef_construction=int(saved["ef_construction"]),
+                ef_search=int(saved["ef_search"]),
+            )
+            index._count = int(saved["count"])
+            index._upper_rows = int(saved["upper_rows"])
+            index._entry_point = int(saved["entry_point"])
+            index._max_layer = int(saved["max_layer"])
+            state = tuple(int(x) for x in saved["rng_state"])
+            index._rng.setstate((3, state, None))
+
+            cap = _INITIAL_CAPACITY  # keep spare room so the index can grow
+            index._vectors = cls._padded(saved["vectors"], cap)
+            index._links0 = cls._padded(saved["links0"], cap)
+            index._degree0 = cls._padded(saved["degree0"], cap)
+            index._levels = cls._padded(saved["levels"], cap)
+            index._upper_offset = cls._padded(saved["upper_offset"], cap)
+            index._upper_links = cls._padded(saved["upper_links"], cap)
+            index._upper_degree = cls._padded(saved["upper_degree"], cap)
+            index._visited = np.zeros(index._vectors.shape[0], dtype=np.int64)
+        return index

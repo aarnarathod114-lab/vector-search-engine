@@ -193,3 +193,41 @@ def test_hnsw_same_seed_builds_same_graph():
         assert first.level(node) == second.level(node)
         for layer in range(first.level(node) + 1):
             assert first.neighbours(node, layer) == second.neighbours(node, layer)
+
+
+# ----------------------------------------------------------------------
+# HNSW index: saving and loading
+# ----------------------------------------------------------------------
+
+
+def test_hnsw_loaded_index_gives_same_answers(built_hnsw, tmp_path):
+    _, hnsw = built_hnsw
+    hnsw.save(tmp_path / "index.npz")
+    loaded = HNSWIndex.load(tmp_path / "index.npz")
+
+    assert len(loaded) == len(hnsw)
+    for query in clustered(20, seed=1):
+        ids, dists = hnsw.search(query, k=10)
+        loaded_ids, loaded_dists = loaded.search(query, k=10)
+        assert loaded_ids.tolist() == ids.tolist()
+        assert np.array_equal(loaded_dists, dists)
+
+
+def test_hnsw_load_restores_settings_and_keeps_growing(tmp_path):
+    data = clustered(600)
+    original = HNSWIndex(dim=DIM, metric="l2", M=8, ef_construction=60, ef_search=30)
+    original.add(data[:500])
+    original.save(tmp_path / "index")  # no ".npz": save and load must still agree
+    loaded = HNSWIndex.load(tmp_path / "index")
+
+    assert (loaded.dim, loaded.metric, loaded.M) == (DIM, "l2", 8)
+    assert (loaded.ef_construction, loaded.ef_search) == (60, 30)
+
+    # Adding more vectors after loading must build the same graph as an
+    # index that was never saved.
+    original.add(data[500:])
+    loaded.add(data[500:])
+    for node in range(600):
+        assert loaded.level(node) == original.level(node)
+        for layer in range(original.level(node) + 1):
+            assert loaded.neighbours(node, layer) == original.neighbours(node, layer)
